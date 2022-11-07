@@ -70,7 +70,7 @@ def placeSLOrder(ticker,capital,ohlc1):
     t_type_sl=kite.TRANSACTION_TYPE_SELL
     print("hi")
     #quantity = int(capital/ohlc1["close"][-1])
-    quantity=1000
+    quantity=900
     print("quantity",quantity)
     symbol=ticker
                 
