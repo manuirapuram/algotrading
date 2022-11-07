@@ -47,8 +47,6 @@ def fetchOHLC(ticker,interval,duration):
     data = pd.DataFrame(kite.historical_data(instrument,dt.date.today()-dt.timedelta(duration), dt.date.today(),interval))
     data.set_index("date",inplace=True)
     hammer_df = hammer(ohlc)
-    print(hammer_df)
-    print("hi3")
     return data
 
 
@@ -68,7 +66,7 @@ def hammer(ohlc_df):
 def placeSLOrder(ticker,capital,ohlc1):
     t_type=kite.TRANSACTION_TYPE_BUY
     t_type_sl=kite.TRANSACTION_TYPE_SELL
-    print("hi")
+    
     #quantity = int(capital/ohlc1["close"][-1])
     quantity=900
     print("quantity",quantity)
@@ -76,7 +74,7 @@ def placeSLOrder(ticker,capital,ohlc1):
                 
     sl=ohlc1["low"][-1]
     round(sl)
-    print("hi2")
+    
     sl_price=sl
     print("slprice",sl_price)
                 
@@ -238,7 +236,7 @@ def OrderBookModifyOrder(capital,ticker):
                 m=ohlc2["close"][-1]
                 print("close:",m)
                 n=m*.3/100
-                print("hi8")
+                
                 z=0           
                 while x <= k:
                     if pos_df[pos_df["tradingsymbol"]==ticker]["quantity"].values[0] != 0:
@@ -334,11 +332,11 @@ def main(capital,tickers):
         print("starting passthrough for.....",ticker)
         try:
 
-            print("hi")
+            
             ohlc1 = fetchOHLC(ticker,"3minute",4)
             hammer_df1 =hammer(ohlc1)
             
-            print("hi")
+            
             
             if hammer_df1["hammer"][-1]==True:
                 print("step hammer")
