@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Fri Nov 11 08:28:59 2022
+
+@author: manu
+"""
+
+
+from kiteconnect import KiteConnect
+import threading
+import os
+import datetime as dt
+import pandas as pd
+import time
+
+cwd = os.chdir("/home/........../files") #enter the file path
+
+#generate trading session
+
+
+#generate trading session
+access_token = open("access_token.txt",'r').read()
+key_secret = open("api_key.txt",'r').read().split()
+kite = KiteConnect(api_key=key_secret[0])
+kite.set_access_token(access_token)
+
+#get dump of all NSE instruments
+instrument_dump = kite.instruments("NFO")
+instrument_df = pd.DataFrame(instrument_dump)
+opt_df = instrument_df[instrument_df["segment"]=="NFO-OPT"]
+
+
+
+
+def instrumentLookup(instrument_df,symbol):
+    #Looks up instrument token for a given script from instrument dump
+    try:
+        return instrument_df[instrument_df.tradingsymbol==symbol].instrument_token.values[0]
+    except:
+        return -1
+
+
+
+
+
+def fetchOHLC(ticker,interval,duration):
+    #extracts historical data and outputs in the form of dataframe
+    instrument = instrumentLookup(instrument_df,ticker)
+    data = pd.DataFrame(kite.historical_data(instrument,dt.date.today()-dt.timedelta(duration), dt.date.today(),interval))
+    data.set_index("date",inplace=True)
+    return data
+     #extracts historical data and outputs in the form of dataframe
+    instrument = instrumentLookup(instrument_df,ticker)
+    data = pd.DataFrame(kite.historical_data(instrument,dt.date.today()-dt.timedelta(duration), dt.date.today(),interval))
+    data.set_index("date",inplace=True)
+    return data
+
+
+
+
+def hammer(ohlc_df):    
+    #returns dataframe with hammer candle column
+    df = ohlc_df.copy()
+    df["hammer"] = (((df["high"] - df["low"])>3*(df["open"] - df["close"])) & \
+                   ((df["close"] - df["low"])/(.001 + df["high"] - df["low"]) > 0.6) & \
+                   ((df["open"] - df["low"])/(.001 + df["high"] - df["low"]) > 0.6)) & \
+                   (abs(df["close"] - df["open"]) > 0.1* (df["high"] - df["low"]))
+    return df
+
+
+
+def placeSLOrder(ticker,capital,ohlc1):
+    t_type=kite.TRANSACTION_TYPE_BUY
+    t_type_sl=kite.TRANSACTION_TYPE_SELL
+    quantity=25
+    print("quantity",quantity)
+    symbol=ticker
+                
+                            
+    s="NFO:"
+    s=s+ticker
+    print(s)
+    ltp = kite.ltp(s) #finding LTP
+    print("ltp:",ltp)
+    x=ltp[s].get('last_price')
+    print("lastprice",x)
+    x=round(x)
+    sl=x-5       #setting up stoploss
+    print("hi2")
+    sl_price=sl
+    print("slprice",sl_price)
+                
+
+    c=0
+    while c<10:
+        try:
+                        
+            print("buying order about to takes place")
+            kite.place_order(tradingsymbol=symbol,
+                        exchange=kite.EXCHANGE_NFO,
+                        transaction_type=t_type,
+                        quantity=quantity,
+                        order_type=kite.ORDER_TYPE_MARKET,
+                        product=kite.PRODUCT_MIS,
+                        variety=kite.VARIETY_REGULAR)
+            print("buy order placed")
+            break
+        except:
+            print("buying order not placed,retrying...")
+            c+=1
+                    
+                
+    d=0
+    while d<10:
+        try:
+            print("sell order to takes place")
+                        
+            kite.place_order(tradingsymbol=symbol,
+                    exchange=kite.EXCHANGE_NFO,
+                    transaction_type=t_type_sl,
+                    quantity=quantity,
+                    order_type=kite.ORDER_TYPE_SL,
+                    price=sl_price,
+                    trigger_price = sl_price,
+                    product=kite.PRODUCT_MIS,
+                    variety=kite.VARIETY_REGULAR)
+            print("sell order  takes place")
+            break
+                   
+        except:
+            if d==9:
+                sl_price=(sl-10)
+                f=0
+                while f<10:
+                    try:
+                        print("d=",d)
+                        print("sell order to takes place")
+                
+                        kite.place_order(tradingsymbol=symbol,
+                                         exchange=kite.EXCHANGE_NFO,
+                                         transaction_type=t_type_sl,
+                                         quantity=quantity,
+                                         order_type=kite.ORDER_TYPE_SL,
+                                         price=sl_price,
+                                         trigger_price = sl_price,
+                                         product=kite.PRODUCT_MIS,
+                                         variety=kite.VARIETY_REGULAR)
+                        print("sell order  takes place")
+                        d+=1
+                        break
+                    except:
+                        print("SL order not placed,retrying...")
+                        f+=1
+                    
+            else:
+                print("SL order not placed,retrying...")
+                d+=1
+                            
+        
+                
+    
+    
+    
+    
+
+          
+ 
+def OrderBookModifyOrder(capital,ticker):
+    a,b = 0,0
+    while a < 10:
+        try:
+            pos_df = pd.DataFrame(kite.positions()["day"])
+            break
+        except:
+            print("can't extract position data..retrying")
+            a+=1
+    while b < 10:
+        try:
+            ord_df = pd.DataFrame(kite.orders())
+            break
+        except:
+            print("can't extract order data..retrying")
+            b+=1
+    
+    if pos_df[pos_df["tradingsymbol"]==ticker]["quantity"].values[0] != 0:
+        
+        print("hi4")
+        order_id = ord_df.loc[(ord_df['tradingsymbol'] == ticker) & (ord_df['status'].isin(["TRIGGER PENDING","OPEN"]))]["order_id"].values[0]
+        print("order_id",order_id)
+        a=0
+        starttime=time.time()
+        timeout = time.time() + 60*5 # 60 seconds times 5 meaning 5min
+        while time.time() <= timeout:
+            if pos_df[pos_df["tradingsymbol"]==ticker]["quantity"].values[0] != 0:
+                pos_df = pd.DataFrame(kite.positions()["day"])
+                ord_df = pd.DataFrame(kite.orders())
+                   
+                print("OrderBookModifyOrder,step:",a)
+                a=a+1
+                print("hi5")
+                ohlc2 = fetchOHLC(ticker,"minute",4)
+                print("hi5")
+                
+
+
+              
+                print("order_id",order_id)
+                            
+                s="NFO:"
+                s=s+ticker
+                print(s)
+                ltp = kite.ltp(s) #finding LTP
+                print("ltp:",ltp)
+                x=ltp[s].get('last_price')
+                print("lastprice",x)
+                            
+                k=x+10 #k is the target,10 points from entry
+                l=x-5  #l is the stoploss,5 points from entry                               
+                m=ohlc2["close"][-1]
+                print("close:",m)
+                n=m*.3/100
+                print("hi8")
+                z=0           
+                while x <= k:
+                    if pos_df[pos_df["tradingsymbol"]==ticker]["quantity"].values[0] != 0:
+                        
+                        try:
+                            s="NFO:"
+                            s=s+ticker
+                            ltp = kite.ltp(s) #finding LTP
+                            print("ltp:",ltp)
+                            x=ltp[s].get('last_price')
+                            print("lastprice",x)
+                            if x<=l:
+                                break
+                        except:
+                            print("error") 
+                    else:
+                        print("trading symbol not found")
+                        break
+                print("final step 1")
+                x=round(x)
+                sl=x
+                sl_price=sl
+                print("slprice",sl_price)
+                price=sl
+                f=0
+                while f<10:
+                    try:
+                        kite.modify_order(order_id=order_id,
+                                          price=price,
+                                          trigger_price=price,
+                                          order_type=kite.ORDER_TYPE_SL,
+                                          variety=kite.VARIETY_REGULAR)
+                        print("order modified based on percentage")        
+                        print("third step of order modification")
+                        while x >= x+3:
+                            
+                            try:
+                                s="NFO:"
+                                s=s+ticker
+                                print(s)
+                                ltp = kite.ltp(s) #finding LTP
+                                print("ltp:",ltp)
+                                x=ltp[s].get('last_price')
+                                print("lastprice",x)
+                            except:
+                                print("error")
+                                                
+                        print("ltp greater than 3") 
+                        break
+                        
+                    except:
+                        print("order modification in final step failed,retrying...")
+                        f+=1
+                       
+                
+                
+               
+            else:
+                print("trading symbol",ticker,"not found in order book,step 0")
+                break                
+                       
+                            
+    else:
+        print("trading symbol",ticker,"not found in order book,step 1")
+        
+            
+    
+        
+    
+
+    
+def main(capital,tickers):
+
+    for ticker in tickers:
+        print("starting passthrough for.....",ticker)
+        try:
+            
+            ohlc1 = fetchOHLC(ticker,"3minute",4)
+            print("step hammer")
+            placeSLOrder(ticker,capital,ohlc1)
+            t = time.localtime()
+            current_time = time.strftime("%H:%M:%S", t) #GETTING CURRENT TIME
+            print(current_time) 
+            t7=threading.Thread(target=OrderBookModifyOrder(capital,ticker))#treading oder book modify order
+            t7.start()
+                
+                
+                
+                
+
+
+                
+        except:
+            print("API error for ticker :",ticker) 
+            
+                
+            
+#############################################################################################################
+#############################################################################################################           
+
+  
+starttime=time.time()
+timeout = time.time() + 60*5# 60 seconds times 5 meaning 5 min
+while time.time() <= timeout:
+    try:
+        t = time.localtime()
+        current_time = time.strftime("%H:%M:%S", t) #GETTING CURRENT TIME
+        print(current_time) 
+        def core1():
+            
+            t = time.localtime()
+            current_time = time.strftime("%H:%M:%S", t) #GETTING CURRENT TIME
+            print(current_time)              
+            tickers = ["BANKNIFTY22N1042200CE"] 
+            #tickers to track - recommended to use max movers from previous day
+            capital = 70000 #position size
+            
+            main(capital,tickers)
+             
+
+            
+        def core2():
+            t = time.localtime()
+            current_time = time.strftime("%H:%M:%S", t) #GETTING CURRENT TIME
+            print(current_time)            
+                      
+            tickers = ["BANKNIFTY22N1041200PE"] 
+            #tickers to track - recommended to use max movers from previous day
+            capital = 70000 #position size
+            main(capital,tickers)
+            
+
+
+    	
+     
+     
+            
+            
+        t1=threading.Thread(target=core1)
+        t2=threading.Thread(target=core2)
+
+        t1.start()
+        t2.start()
+
+       
+    except KeyboardInterrupt:
+        print('\n\nKeyboard exception received. Exiting.')
+        exit()
+            
+    time.sleep(500)
+
+
+
+
+
+
+                
+                   
